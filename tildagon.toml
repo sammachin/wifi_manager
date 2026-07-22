@@ -1,0 +1,13 @@
+[app]
+name = "WiFi Manager"
+category = "Apps"
+
+[entry]
+class = "WiFiManager"
+
+[metadata]
+author = "sam"
+license = "MIT"
+url = "https://github.com/sam/tildagon-wifi-manager"
+description = "Store, manage, activate and share Wi-Fi profiles on your badge."
+version = "1.0.0"
