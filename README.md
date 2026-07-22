@@ -1,6 +1,6 @@
 # WiFi Manager
 
-A [Tildagon](https://tildagon.badge.emfcamp.org/) (EMF 2024 badge) app to store,
+A [Tildagon](https://tildagon.badge.emfcamp.org/) app to store,
 manage, activate and share Wi-Fi profiles on your badge.
 
 The badge normally holds a single Wi-Fi credential in its system settings, so
@@ -59,34 +59,6 @@ A future version could add a short PIN to lightly obfuscate the payload.
 Helper modules are prefixed `wifim_` so they never shadow the firmware's own
 `wifi` module.
 
-## Install (local / development)
-
-Tildagon OS has no TOML parser, so a locally sideloaded app is discovered via
-`metadata.json` (the app store instead generates its manifest from
-`tildagon.toml`). This repo ships a ready `metadata.json`:
-
-```json
-{ "name": "WiFi Manager", "path": "apps.sammachin_tildagon_wifi_manager.app" }
-```
-
-`path` is a Python import path (`apps.<folder>.<module>`), so **the badge folder
-must be `wifi_manager`** — underscore, not the repo's hyphenated name (hyphens
-are illegal in module names). The loader imports that module and runs the class
-named by `__app_export__` (`WiFiManager`).
-
-With the badge connected over USB-C (IN port) and `mpremote` installed:
-
-```bash
-mpremote mkdir apps
-mpremote mkdir apps/sammachin_tildagon_wifi_manager
-mpremote cp app.py wifim_store.py wifim_wifi.py wifim_espnow.py  metadata.json  :/apps/sammachin_tildagon_wifi_manager/
-```
-
-Then reboot the badge (hold the reboot button ~2s) and launch **WiFi Manager**
-from the menu. Sharing/receiving requires Tildagon OS ≥ 1.9.0 on both badges.
-
-> Remove `metadata.json` before publishing to the app store — it's a
-> development-only file; the store uses `tildagon.toml`.
 
 ## License
 
