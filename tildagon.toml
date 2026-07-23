@@ -6,8 +6,8 @@ category = "Apps"
 class = "WiFiManager"
 
 [metadata]
-author = "sam"
+author = "sammachin"
 license = "MIT"
 url = "https://github.com/sammachin/wifi-manager"
 description = "Store, manage, activate and share Wi-Fi profiles on your badge."
-version = "1.0.0"
+version = "1.0.1"
