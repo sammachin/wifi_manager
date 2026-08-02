@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tildagon WiFi Manager</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f6f7f9;
+    --card: #ffffff;
+    --fg: #1a1c1e;
+    --muted: #5c636a;
+    --border: #d7dbe0;
+    --accent: #1f8a4c;
+    --accent-fg: #ffffff;
+    --error: #b3261e;
+    --field: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a;
+      --card: #1e2126;
+      --fg: #e6e8ea;
+      --muted: #9aa0a6;
+      --border: #333941;
+      --accent: #3ddc84;
+      --accent-fg: #08130b;
+      --error: #f2b8b5;
+      --field: #262a30;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 2rem 1rem;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  }
+  .card {
+    width: 100%;
+    max-width: 30rem;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 1.5rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,.08);
+  }
+  h1 { font-size: 1.25rem; margin: 0 0 .25rem; }
+  p.lead { margin: 0 0 1.25rem; color: var(--muted); font-size: .95rem; }
+  label { display: block; font-size: .85rem; font-weight: 600; margin: .9rem 0 .3rem; }
+  input {
+    width: 100%;
+    padding: .6rem .7rem;
+    font-size: 1rem;
+    color: var(--fg);
+    background: var(--field);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .hint { font-size: .78rem; color: var(--muted); margin: .25rem 0 0; }
+  button {
+    width: 100%;
+    margin-top: 1.4rem;
+    padding: .75rem;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--accent-fg);
+    background: var(--accent);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .status {
+    margin-top: 1.1rem;
+    padding: .7rem .8rem;
+    border-radius: 8px;
+    font-size: .9rem;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    min-height: 1.2rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .status.err { color: var(--error); border-color: var(--error); }
+  .status.ok { color: var(--accent); border-color: var(--accent); }
+  .note {
+    margin-top: 1.25rem;
+    font-size: .8rem;
+    color: var(--muted);
+    border-top: 1px solid var(--border);
+    padding-top: .9rem;
+  }
+  .note code { font-size: .78rem; }
+  .unsupported {
+    margin-bottom: 1rem;
+    padding: .7rem .8rem;
+    border: 1px solid var(--error);
+    border-radius: 8px;
+    color: var(--error);
+    font-size: .88rem;
+  }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+  <main class="card">
+    <h1>Send Wi-Fi to Tildagon</h1>
+    <p class="lead">Fill in a network, open  <strong>WiFi Manager</strong> on your device, select Recieve, then send it over Bluetooth.</p>
+
+    <div id="unsupported" class="unsupported" hidden>
+      This browser doesn't support Web Bluetooth. Use desktop <strong>Chrome</strong>,
+      <strong>Edge</strong> or <strong>Vivaldi</strong>, over <strong>https://</strong> or <strong>localhost</strong>.
+    </div>
+
+    <form id="form">
+      <label for="name">Name <span class="hint">(optional — defaults to the SSID)</span></label>
+      <input id="name" name="name" maxlength="32" autocomplete="off" placeholder="Home / EMF / …">
+
+      <label for="ssid">SSID</label>
+      <input id="ssid" name="ssid" maxlength="32" autocomplete="off" required placeholder="network name">
+
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" maxlength="63" autocomplete="off" placeholder="leave blank for open networks">
+
+      <label for="username">Enterprise identity <span class="hint">(blank = normal WPA2)</span></label>
+      <input id="username" name="username" maxlength="64" autocomplete="off" placeholder="e.g. badge (EMF RADIUS)">
+
+      <button id="send" type="submit">Connect &amp; send</button>
+    </form>
+
+    <div id="status" class="status" role="status" aria-live="polite"></div>
+
+    <p class="note">
+      Credentials are sent over an <strong>unencrypted</strong> Bluetooth connection — anyone in range could observe them. 
+      It's meant for casual, share-with-friends networks, not secrets.
+    </p>
+  </main>
+
+<script>
+  "use strict";
+
+  // Must match wifim_ble.py on the badge.
+  const SERVICE_UUID = "f0a2b100-8c1d-4b6e-9a2f-1e3c5d7f9b01";
+  const CHAR_UUID    = "f0a2b101-8c1d-4b6e-9a2f-1e3c5d7f9b01";
+
+  const TAG = "wfm";
+  const VERSION = 1;
+  const CHUNK = 20;  // stay under the smallest default BLE MTU (23 -> 20 usable)
+
+  const form = document.getElementById("form");
+  const statusEl = document.getElementById("status");
+  const sendBtn = document.getElementById("send");
+
+  const hasBluetooth = "bluetooth" in navigator;
+  if (!hasBluetooth) {
+    document.getElementById("unsupported").hidden = false;
+    sendBtn.disabled = true;
+  }
+
+  function setStatus(msg, kind) {
+    statusEl.textContent = msg;
+    statusEl.className = "status" + (kind ? " " + kind : "");
+  }
+
+  // Build the same tagged-JSON payload the badge's wifim_share.decode expects,
+  // newline-terminated so the badge knows the frame is complete.
+  function buildPayload(fields) {
+    const payload = {
+      t: TAG,
+      v: VERSION,
+      n: fields.name,
+      s: fields.ssid,
+      p: fields.password,
+    };
+    if (fields.username) payload.u = fields.username;
+    return new TextEncoder().encode(JSON.stringify(payload) + "\n");
+  }
+
+  async function writeChunks(characteristic, bytes) {
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      await characteristic.writeValueWithResponse(bytes.slice(i, i + CHUNK));
+    }
+  }
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!hasBluetooth) return;
+
+    const fields = {
+      name: document.getElementById("name").value.trim(),
+      ssid: document.getElementById("ssid").value.trim(),
+      password: document.getElementById("password").value,
+      username: document.getElementById("username").value.trim(),
+    };
+    if (!fields.ssid) {
+      setStatus("Enter an SSID first.", "err");
+      return;
+    }
+
+    const bytes = buildPayload(fields);
+    let device;
+    sendBtn.disabled = true;
+    try {
+      setStatus("Choose your badge in the pop-up…");
+      device = await navigator.bluetooth.requestDevice({
+        filters: [{ services: [SERVICE_UUID] }],
+      });
+
+      setStatus("Connecting to " + (device.name || "badge") + "…");
+      const server = await device.gatt.connect();
+      const service = await server.getPrimaryService(SERVICE_UUID);
+      const characteristic = await service.getCharacteristic(CHAR_UUID);
+
+      setStatus("Sending " + fields.ssid + "…");
+      await writeChunks(characteristic, bytes);
+
+      setStatus("Sent " + fields.ssid + ". Confirm the save on your badge.", "ok");
+    } catch (err) {
+      // A user cancelling the chooser throws NotFoundError — report it gently.
+      if (err && err.name === "NotFoundError") {
+        setStatus("No badge selected. Make sure it's in Receive mode and try again.", "err");
+      } else {
+        setStatus("Failed: " + (err && err.message ? err.message : err), "err");
+      }
+    } finally {
+      if (device && device.gatt && device.gatt.connected) device.gatt.disconnect();
+      sendBtn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

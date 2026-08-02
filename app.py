@@ -21,10 +21,12 @@ try:
     from . import wifim_store as store
     from . import wifim_wifi as wifi_helper
     from . import wifim_espnow as sharing
+    from . import wifim_ble as ble_sharing
 except ImportError:  # loaded flat (app dir on sys.path)
     import wifim_store as store
     import wifim_wifi as wifi_helper
     import wifim_espnow as sharing
+    import wifim_ble as ble_sharing
 
 # Action rows shown after the list of profiles on the main menu.
 _ADD = "Add"
@@ -56,7 +58,9 @@ class WiFiManager(app.App):
 
         self._share_accum = 0
         self._receiver = None
-        self._received = None     # profile stashed by the ESP-NOW handler
+        self._ble_receiver = None
+        self._ble_listening = False
+        self._received = None     # profile stashed by a receive handler
         self._pending_recv = None # profile awaiting the save/discard dialog
 
         self._show_main()
@@ -272,6 +276,10 @@ class WiFiManager(app.App):
         self.button_states.clear()
         self._received = None
         self._pending_recv = None
+        self._ble_listening = False
+
+        # ESP-NOW is the baseline transport; if it can't start, there's nothing
+        # to listen with, so bail back to the main menu.
         try:
             if self._receiver is None:
                 self._receiver = sharing.Receiver(self, self._on_received)
@@ -279,6 +287,18 @@ class WiFiManager(app.App):
         except Exception as e:  # noqa: BLE001
             self._notify("ESP-NOW error: %s" % e)
             self._show_main()
+            return
+
+        # BLE is additive: a failure here (or no BLE at all) still leaves us
+        # listening over ESP-NOW, so note it but stay in receive mode.
+        if ble_sharing.AVAILABLE:
+            try:
+                if self._ble_receiver is None:
+                    self._ble_receiver = ble_sharing.Receiver(self, self._on_received)
+                self._ble_receiver.start()
+                self._ble_listening = True
+            except Exception as e:  # noqa: BLE001
+                self._notify("BLE off: %s" % e)
 
     def _on_received(self, profile):
         # Runs on the eventbus; keep it cheap. The update loop shows the dialog.
@@ -311,6 +331,12 @@ class WiFiManager(app.App):
     def _stop_receive(self):
         if self._receiver is not None:
             self._receiver.stop()
+        if self._ble_receiver is not None:
+            try:
+                self._ble_receiver.stop()
+            except Exception:  # noqa: BLE001 - never block leaving receive mode
+                pass
+        self._ble_listening = False
         self._received = None
         self._show_profile()
 
@@ -341,6 +367,9 @@ class WiFiManager(app.App):
                 self._stop_share()
 
         elif self.state == "RECEIVE":
+            if self._ble_receiver is not None and self._ble_receiver.error:
+                self._notify("BLE error: %s" % self._ble_receiver.error)
+                self._ble_receiver.error = None
             if self._dialog is None:
                 if self._received is not None:
                     profile = self._received
@@ -369,9 +398,12 @@ class WiFiManager(app.App):
                 ("CANCEL to stop", 0.5),
             ])
         elif self.state == "RECEIVE" and self._dialog is None:
+            transports = "ESP-NOW + BLE" if self._ble_listening else "ESP-NOW"
             self._draw_lines(ctx, [
-                ("Listening for", 0.7),
-                ("shared networks...", 0.7),
+                ("Listening...", 0.7),
+                ("", 0.4),
+                ("sammachin.com/wifiman", 0.8),
+                ("to send via Web Bluetooth", 0.7),
                 ("", 0.5),
                 ("CANCEL to stop", 0.5),
             ])

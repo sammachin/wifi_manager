@@ -1,56 +1,27 @@
 """Share WiFi profiles between badges over ESP-NOW broadcast.
 
 Built on the firmware's `espnow_service` (a wrapper around AIOESPNow) and the
-eventbus. Payloads are small tagged JSON blobs, well under the 250-byte ESP-NOW
-limit (SSID <=32, password <=63).
+eventbus. Payloads are the shared tagged-JSON blobs produced by `wifim_share`,
+well under the 250-byte ESP-NOW limit.
 
 SECURITY: profiles are broadcast in plaintext. Any badge in receive mode within
 radio range can read the SSID and password. This is intentional for the badge
 social use case; do not use it to move secrets you care about.
 """
 
-import json
-
 from system.espnow import espnow_service, EspNowReceiveEvent, BROADCAST_MAC
 from system.eventbus import eventbus
 
-_TAG = "wfm"      # identifies our packets
-_VERSION = 1
-
-
-def _encode(profile):
-    payload = {
-        "t": _TAG,
-        "v": _VERSION,
-        "n": profile.get("name", ""),
-        "s": profile.get("ssid", ""),
-        "p": profile.get("password", ""),
-    }
-    username = profile.get("username")
-    if username:
-        payload["u"] = username
-    return json.dumps(payload).encode()
-
-
-def _decode(msg):
-    """Return a profile dict for a valid packet, else None."""
-    try:
-        data = json.loads(bytes(msg))
-    except (ValueError, TypeError):
-        return None
-    if not isinstance(data, dict) or data.get("t") != _TAG:
-        return None
-    return {
-        "name": data.get("n", "") or data.get("s", ""),
-        "ssid": data.get("s", ""),
-        "password": data.get("p", ""),
-        "username": data.get("u", "") or "",
-    }
+# Helper modules work whether the app is loaded as a package or flat.
+try:
+    from . import wifim_share as share
+except ImportError:  # loaded flat (app dir on sys.path)
+    import wifim_share as share
 
 
 def broadcast(profile):
     """Send one broadcast advertisement of the given profile."""
-    espnow_service.send(_encode(profile), mac=BROADCAST_MAC)
+    espnow_service.send(share.encode(profile), mac=BROADCAST_MAC)
 
 
 class Receiver:
@@ -66,7 +37,7 @@ class Receiver:
         self._sub = None
 
     def _handle(self, event):
-        profile = _decode(event.msg)
+        profile = share.decode(event.msg)
         if profile and profile.get("ssid"):
             self.on_profile(profile)
 
