@@ -99,6 +99,14 @@
     padding-top: .9rem;
   }
   .note code { font-size: .78rem; }
+  .sideload {
+    margin-top: 1.25rem;
+    padding-top: .9rem;
+    border-top: 1px solid var(--border);
+    text-align: center;
+  }
+  .sideload p { margin: 0 0 .7rem; font-size: .85rem; color: var(--muted); }
+  .sideload img { max-width: 100%; height: auto; }
   .unsupported {
     margin-bottom: 1rem;
     padding: .7rem .8rem;
@@ -139,9 +147,16 @@
     <div id="status" class="status" role="status" aria-live="polite"></div>
 
     <p class="note">
-      Credentials are sent over an <strong>unencrypted</strong> Bluetooth connection — anyone in range could observe them. 
+      Credentials are sent over an <strong>unencrypted</strong> Bluetooth connection — anyone in range could observe them.
       It's meant for casual, share-with-friends networks, not secrets.
     </p>
+
+    <div class="sideload">
+      <p>Need WiFi Manager? Sideload it via USB.</p>
+      <a href="https://s3.sammachin.com/sideload/?repo=https://github.com/sammachin/wifi_manager">
+        <img src="https://s3.sammachin.com/sideload/badge.svg" alt="Install WiFi Manager to Tildagon badge">
+      </a>
+    </div>
   </main>
 
 <script>
